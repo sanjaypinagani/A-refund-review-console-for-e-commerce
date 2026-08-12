@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Refund Details</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background: #f5f5f5;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+
+        .amount {
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .warning {
+            background: #fff3cd;
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: 5px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            text-align: left;
+        }
+
+        button {
+            padding: 8px 14px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+
+        textarea {
+            width: 100%;
+            height: 80px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+
+<body>
+
+    <button onclick="goBack()">← Back to Queue</button>
+
+    <h1>Refund Details</h1>
+
+    <div id="orderDetails">
+        Loading...
+    </div>
+
+    <div class="card">
+        <h2>Refund History</h2>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Refund ID</th>
+                    <th>Status</th>
+                    <th>Amount</th>
+                    <th>Currency</th>
+                </tr>
+            </thead>
+
+            <tbody id="refundHistory">
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>Decision</h2>
+
+        <div id="decisionArea">
+            Loading...
+        </div>
+    </div>
+
+    <script>
+
+        const params = new URLSearchParams(
+            window.location.search
+        );
+
+        const orderId = params.get("id");
+
+
+        async function loadOrder() {
+
+            const response = await fetch(
+                `http://localhost:3000/api/orders/${orderId}`
+            );
+
+            if (!response.ok) {
+                document.getElementById("orderDetails")
+                    .textContent = "Order not found";
+
+                return;
+            }
+
+            const order = await response.json();
+
+            document.getElementById("orderDetails").innerHTML = `
+                <div class="card">
+
+                    <h2>Order ${order.orderId}</h2>
+
+                    <p>
+                        Customer:
+                        <strong>${order.customerId}</strong>
+                    </p>
+
+                    <p>
+                        Currency:
+                        <strong>${order.currency}</strong>
+                    </p>
+
+                    <p>
+                        Order Total:
+                        <strong>
+                            ${formatMoney(
+                                order.totalAmount,
+                                order.currency
+                            )}
+                        </strong>
+                    </p>
+
+                    <p>
+                        Refunded:
+                        <strong>
+                            ${formatMoney(
+                                order.refundedAmount,
+                                order.currency
+                            )}
+                        </strong>
+                    </p>
+
+                    <p>
+                        Pending:
+                        <strong>
+                            ${formatMoney(
+                                order.pendingAmount,
+                                order.currency
+                            )}
+                        </strong>
+                    </p>
+
+                    <p>
+                        Remaining:
+                        <strong>
+                            ${formatMoney(
+                                order.remainingAmount,
+                                order.currency
+                            )}
+                        </strong>
+                    </p>
+
+                    <p>
+                        Status:
+                        <strong>${order.status}</strong>
+                    </p>
+
+                </div>
+            `;
+
+
+            if (order.overRefundedAmount > 0) {
+
+                document.getElementById(
+                    "orderDetails"
+                ).innerHTML += `
+                    <div class="warning">
+                        ⚠ Over-refunded by
+                        ${formatMoney(
+                            order.overRefundedAmount,
+                            order.currency
+                        )}
+                    </div>
+                `;
+            }
+
+
+            if (order.overRequestedAmount > 0) {
+
+                document.getElementById(
+                    "orderDetails"
+                ).innerHTML += `
+                    <div class="warning">
+                        ⚠ Refunded + pending amount exceeds
+                        the order total by
+                        ${formatMoney(
+                            order.overRequestedAmount,
+                            order.currency
+                        )}
+                    </div>
+                `;
+            }
+
+
+            if (order.hasChargeback) {
+
+                document.getElementById(
+                    "orderDetails"
+                ).innerHTML += `
+                    <div class="warning">
+                        ⚠ Chargeback opened for this order
+                    </div>
+                `;
+            }
+
+
+            for (const issue of order.issues || []) {
+
+                document.getElementById(
+                    "orderDetails"
+                ).innerHTML += `
+                    <div class="warning">
+                        ⚠ ${issue.type}
+                    </div>
+                `;
+            }
+
+
+            loadRefundHistory(order);
+        }
+
+
+        function loadRefundHistory(order) {
+
+            const table =
+                document.getElementById("refundHistory");
+
+            table.innerHTML = "";
+
+            for (const refund of order.refunds) {
+
+                const row =
+                    document.createElement("tr");
+
+                row.innerHTML = `
+                    <td>${refund.refundId}</td>
+
+                    <td>${refund.status}</td>
+
+                    <td>
+                        ${formatMoney(
+                            refund.amount,
+                            refund.currency
+                        )}
+                    </td>
+
+                    <td>${refund.currency}</td>
+                `;
+
+                table.appendChild(row);
+
+
+                if (refund.status === "pending") {
+                    loadDecision(refund.refundId);
+                }
+            }
+        }
+
+
+        async function loadDecision(refundId) {
+
+            const response = await fetch(
+                `http://localhost:3000/api/refunds/${refundId}/decision`
+            );
+
+            const data = await response.json();
+
+            const area =
+                document.getElementById("decisionArea");
+
+            if (data.decided) {
+
+                area.innerHTML = `
+                    <p>
+                        <strong>
+                            Decision:
+                        </strong>
+                        ${data.decision.decision}
+                    </p>
+
+                    <p>
+                        <strong>
+                            Reason:
+                        </strong>
+                        ${data.decision.reason}
+                    </p>
+                `;
+
+                return;
+            }
+
+
+            area.innerHTML = `
+                <p>
+                    Refund ${refundId} is awaiting a decision.
+                </p>
+
+                <textarea
+                    id="decisionReason"
+                    placeholder="Enter reason..."
+                ></textarea>
+
+                <br>
+
+                <button onclick="makeDecision(
+                    '${refundId}',
+                    'approved'
+                )">
+                    Approve
+                </button>
+
+                <button onclick="makeDecision(
+                    '${refundId}',
+                    'rejected'
+                )">
+                    Reject
+                </button>
+            `;
+        }
+
+
+        async function makeDecision(
+            refundId,
+            decision
+        ) {
+
+            const reason =
+                document.getElementById(
+                    "decisionReason"
+                ).value;
+
+            if (!reason.trim()) {
+
+                alert(
+                    "Please enter a reason"
+                );
+
+                return;
+            }
+
+
+            const response = await fetch(
+                `http://localhost:3000/api/refunds/${refundId}/decision`,
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body: JSON.stringify({
+                        decision,
+                        reason
+                    })
+                }
+            );
+
+
+            const data = await response.json();
+
+
+            if (!response.ok) {
+
+                alert(
+                    data.error ||
+                    "Failed to save decision"
+                );
+
+                return;
+            }
+
+
+            alert(
+                "Decision recorded successfully"
+            );
+
+            loadDecision(refundId);
+        }
+
+
+        function formatMoney(
+            amount,
+            currency
+        ) {
+
+            return `${currency} ${(
+                amount / 100
+            ).toFixed(2)}`;
+        }
+
+
+        function goBack() {
+
+            window.location.href =
+                "index.html";
+        }
+
+
+        if (!orderId) {
+
+            document.getElementById(
+                "orderDetails"
+            ).textContent =
+                "No order selected.";
+
+        } else {
+
+            loadOrder();
+        }
+
+    </script>
+
+</body>
+</html>

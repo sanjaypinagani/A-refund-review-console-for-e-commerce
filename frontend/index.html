@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Refund Review Console</title>
+
+
+    <style>
+
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background: #f5f5f5;
+            color: #222;
+        }
+
+        h1 {
+            margin-bottom: 30px;
+        }
+
+        h2 {
+            margin-top: 30px;
+        }
+
+        .summary {
+            background: white;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-radius: 8px;
+        }
+
+        .summary h2 {
+            margin: 0;
+            font-size: 16px;
+            color: #666;
+        }
+
+        .summary p {
+            font-size: 28px;
+            font-weight: bold;
+            margin: 10px 0 0;
+        }
+
+        .filters {
+            margin: 15px 0;
+        }
+
+        .filters button {
+            margin-right: 8px;
+            padding: 8px 14px;
+            border: 1px solid #ccc;
+            background: white;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .filters button:hover {
+            background: #eee;
+        }
+
+        table {
+            width: 100%;
+            background: white;
+            border-collapse: collapse;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        th,
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+            text-align: left;
+        }
+
+        th {
+            background: #eee;
+        }
+
+        button {
+            padding: 7px 12px;
+            cursor: pointer;
+        }
+
+        .status {
+            font-weight: bold;
+        }
+
+        .decision-approved {
+            font-weight: bold;
+        }
+
+        .decision-rejected {
+            font-weight: bold;
+        }
+
+        .empty {
+            text-align: center;
+            padding: 25px;
+            color: #777;
+        }
+
+    </style>
+
+</head>
+
+
+<body>
+
+
+    <h1>
+        Refund Review Console
+    </h1>
+
+
+    <!-- Pending payout -->
+
+    <div class="summary">
+
+        <h2>
+            Pending Payout
+        </h2>
+
+        <p id="pendingPayout">
+            Loading...
+        </p>
+
+    </div>
+
+
+    <!-- Recent refunds -->
+
+    <h2>
+        Refunds — Last 7 Days
+    </h2>
+
+
+    <!-- Filters -->
+
+    <div class="filters">
+
+        <button
+            onclick="filterRefunds('all')"
+        >
+            All
+        </button>
+
+        <button
+            onclick="filterRefunds('pending')"
+        >
+            Pending
+        </button>
+
+        <button
+            onclick="filterRefunds('refunded')"
+        >
+            Refunded
+        </button>
+
+        <button
+            onclick="filterRefunds('failed')"
+        >
+            Failed
+        </button>
+
+    </div>
+
+
+    <!-- Refund table -->
+
+    <table>
+
+        <thead>
+
+            <tr>
+
+                <th>
+                    Refund ID
+                </th>
+
+                <th>
+                    Order
+                </th>
+
+                <th>
+                    Customer
+                </th>
+
+                <th>
+                    Amount
+                </th>
+
+                <th>
+                    Status
+                </th>
+
+                <th>
+                    Decision
+                </th>
+
+                <th>
+                    Requested At
+                </th>
+
+                <th>
+                    Action
+                </th>
+
+            </tr>
+
+        </thead>
+
+
+        <tbody id="refundQueue">
+
+        </tbody>
+
+    </table>
+
+
+    <script>
+
+
+        const API_URL =
+            "http://localhost:3000";
+
+
+        let allRefunds = [];
+
+
+        /*
+         * Load Priya's pending payout number.
+         *
+         * We keep currencies separate because
+         * INR and USD cannot be added together
+         * without an exchange rate.
+         */
+
+        async function loadSummary() {
+
+            try {
+
+                const response = await fetch(
+                    `${API_URL}/api/summary`
+                );
+
+
+                if (!response.ok) {
+
+                    throw new Error(
+                        "Failed to load summary"
+                    );
+
+                }
+
+
+                const data =
+                    await response.json();
+
+
+                const pendingPayout =
+                    data.pendingPayout || {};
+
+
+                const currencies =
+                    Object.keys(
+                        pendingPayout
+                    );
+
+
+                if (
+                    currencies.length === 0
+                ) {
+
+                    document.getElementById(
+                        "pendingPayout"
+                    ).textContent = "0";
+
+                    return;
+
+                }
+
+
+                const values =
+                    currencies.map(
+                        currency => {
+
+                            return `${currency} ${(
+                                pendingPayout[currency] / 100
+                            ).toFixed(2)}`;
+
+                        }
+                    );
+
+
+                document.getElementById(
+                    "pendingPayout"
+                ).textContent =
+                    values.join("  |  ");
+
+
+            } catch (error) {
+
+                console.error(error);
+
+
+                document.getElementById(
+                    "pendingPayout"
+                ).textContent =
+                    "Unable to load";
+
+            }
+
+        }
+
+
+
+        /*
+         * Load refunds requested during
+         * the last seven days.
+         */
+
+        async function loadQueue() {
+
+            try {
+
+                const response = await fetch(
+                    `${API_URL}/api/refunds/recent`
+                );
+
+
+                if (!response.ok) {
+
+                    throw new Error(
+                        "Failed to load refunds"
+                    );
+
+                }
+
+
+                allRefunds =
+                    await response.json();
+
+
+                renderRefunds(
+                    allRefunds
+                );
+
+
+            } catch (error) {
+
+                console.error(error);
+
+
+                const table =
+                    document.getElementById(
+                        "refundQueue"
+                    );
+
+
+                table.innerHTML = `
+                    <tr>
+                        <td
+                            colspan="8"
+                            class="empty"
+                        >
+                            Unable to load refunds
+                        </td>
+                    </tr>
+                `;
+
+            }
+
+        }
+
+
+
+        /*
+         * Render refunds.
+         */
+
+        function renderRefunds(
+            refunds
+        ) {
+
+            const table =
+                document.getElementById(
+                    "refundQueue"
+                );
+
+
+            table.innerHTML = "";
+
+
+            if (
+                refunds.length === 0
+            ) {
+
+                table.innerHTML = `
+                    <tr>
+                        <td
+                            colspan="8"
+                            class="empty"
+                        >
+                            No refunds found
+                        </td>
+                    </tr>
+                `;
+
+                return;
+
+            }
+
+
+            for (
+                const refund of refunds
+            ) {
+
+
+                const row =
+                    document.createElement(
+                        "tr"
+                    );
+
+
+                /*
+                 * Decision display
+                 */
+
+                let decisionText =
+                    "Not decided";
+
+
+                if (
+                    refund.decision
+                ) {
+
+                    decisionText =
+                        refund.decision
+                            .toUpperCase();
+
+                }
+
+
+                /*
+                 * Action buttons
+                 *
+                 * Only pending refunds
+                 * without a decision can
+                 * be approved/rejected.
+                 */
+
+                let actionButtons = `
+                    <button
+                        onclick="
+                            viewOrder(
+                                '${refund.orderId}'
+                            )
+                        "
+                    >
+                        View
+                    </button>
+                `;
+
+
+                if (
+                    refund.status === "pending" &&
+                    !refund.decision
+                ) {
+
+                    actionButtons += `
+
+                        <button
+                            onclick="
+                                makeDecision(
+                                    '${refund.refundId}',
+                                    'approved'
+                                )
+                            "
+                        >
+                            Approve
+                        </button>
+
+
+                        <button
+                            onclick="
+                                makeDecision(
+                                    '${refund.refundId}',
+                                    'rejected'
+                                )
+                            "
+                        >
+                            Reject
+                        </button>
+
+                    `;
+
+                }
+
+
+                row.innerHTML = `
+
+                    <td>
+                        ${refund.refundId}
+                    </td>
+
+
+                    <td>
+                        ${refund.orderId}
+                    </td>
+
+
+                    <td>
+                        ${refund.customerId}
+                    </td>
+
+
+                    <td>
+                        ${formatMoney(
+                            refund.amount,
+                            refund.currency
+                        )}
+                    </td>
+
+
+                    <td class="status">
+                        ${refund.status}
+                    </td>
+
+
+                    <td>
+                        ${decisionText}
+                    </td>
+
+
+                    <td>
+                        ${formatDate(
+                            refund.requestedAt
+                        )}
+                    </td>
+
+
+                    <td>
+                        ${actionButtons}
+                    </td>
+
+                `;
+
+
+                table.appendChild(
+                    row
+                );
+
+            }
+
+        }
+
+
+
+        /*
+         * Filter the seven-day list.
+         */
+
+        function filterRefunds(
+            status
+        ) {
+
+
+            if (
+                status === "all"
+            ) {
+
+                renderRefunds(
+                    allRefunds
+                );
+
+                return;
+
+            }
+
+
+            const filtered =
+                allRefunds.filter(
+                    refund =>
+                        refund.status === status
+                );
+
+
+            renderRefunds(
+                filtered
+            );
+
+        }
+
+
+
+        /*
+         * Open order detail page.
+         */
+
+        function viewOrder(
+            orderId
+        ) {
+
+            window.location.href =
+                `order.html?id=${encodeURIComponent(
+                    orderId
+                )}`;
+
+        }
+
+
+
+        /*
+         * Approve or reject a refund.
+         */
+
+        async function makeDecision(
+            refundId,
+            decision
+        ) {
+
+
+            const reason =
+                prompt(
+                    `Enter reason for ${decision}:`
+                );
+
+
+            if (
+                !reason ||
+                !reason.trim()
+            ) {
+
+                alert(
+                    "Reason is required."
+                );
+
+                return;
+
+            }
+
+
+            try {
+
+
+                const response =
+                    await fetch(
+                        `${API_URL}/api/refunds/${refundId}/decision`,
+                        {
+
+                            method: "POST",
+
+                            headers: {
+                                "Content-Type":
+                                    "application/json"
+                            },
+
+                            body:
+                                JSON.stringify({
+                                    decision,
+                                    reason
+                                })
+
+                        }
+                    );
+
+
+                const data =
+                    await response.json();
+
+
+                if (
+                    !response.ok
+                ) {
+
+                    alert(
+                        data.error ||
+                        "Failed to record decision"
+                    );
+
+                    return;
+
+                }
+
+
+                /*
+                 * Update the local object
+                 * immediately.
+                 */
+
+                const refund =
+                    allRefunds.find(
+                        item =>
+                            item.refundId ===
+                            refundId
+                    );
+
+
+                if (refund) {
+
+                    refund.decision =
+                        decision;
+
+                    refund.decisionReason =
+                        reason;
+
+                }
+
+
+                /*
+                 * Re-render the table.
+                 */
+
+                renderRefunds(
+                    allRefunds
+                );
+
+
+            } catch (error) {
+
+                console.error(
+                    error
+                );
+
+
+                alert(
+                    "Unable to connect to the server."
+                );
+
+            }
+
+        }
+
+
+
+        /*
+         * Format money.
+         *
+         * Backend stores money in minor units.
+         *
+         * Example:
+         *
+         * 10000 INR
+         * becomes
+         * INR 100.00
+         */
+
+        function formatMoney(
+            amount,
+            currency
+        ) {
+
+
+            if (
+                amount === null ||
+                amount === undefined
+            ) {
+
+                return "-";
+
+            }
+
+
+            return `${currency} ${(
+                amount / 100
+            ).toFixed(2)}`;
+
+        }
+
+
+
+        /*
+         * Format timestamp.
+         */
+
+        function formatDate(
+            date
+        ) {
+
+
+            if (!date) {
+
+                return "-";
+
+            }
+
+
+            const parsedDate =
+                new Date(date);
+
+
+            if (
+                Number.isNaN(
+                    parsedDate.getTime()
+                )
+            ) {
+
+                return date;
+
+            }
+
+
+            return parsedDate.toLocaleString();
+
+        }
+
+
+
+        /*
+         * Load page.
+         */
+
+        loadSummary();
+
+        loadQueue();
+
+
+    </script>
+
+
+</body>
+
+</html>
