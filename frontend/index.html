@@ -199,17 +199,17 @@
                 </th>
 
                 <th>
+                    High Value ?
+                </th>
+
+                <th>
                     Status
                 </th>
 
                 <th>
                     Decision
                 </th>
-
-                <th>
-                    Requested At
-                </th>
-
+                <th>Requested at</th>
                 <th>
                     Action
                 </th>
@@ -529,6 +529,13 @@
                             refund.currency
                         )}
                     </td>
+                    <td>
+    ${
+        refund.isHighValue
+            ? "⚠ High Value"
+            : "—"
+    }
+</td>
 
 
                     <td class="status">

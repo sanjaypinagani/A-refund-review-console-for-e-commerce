@@ -52,7 +52,7 @@ async function startServer() {
 
         console.log(
             "Events after deduplication:",
-            events.length
+            uniqueEvents.length
         );
 
 
@@ -226,6 +226,7 @@ app.get("/api/refunds/recent", async(req, res) => {
                 currency: refund.currency,
                 amount: refund.amount,
                 status: refund.status,
+                isHighValue: order.isHighValue,
                 decision: decision
         ? decision.decision
         : null,

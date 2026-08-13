@@ -43,17 +43,16 @@ function deduplicateEvents(events) {
     for (const event of events) {
         const eventId = event.event_id;
 
-        if (!eventId) {
-            uniqueEvents.push(event);
-            continue;
-        }
+        
 
         if (seen.has(eventId)) {
             continue;
         }
+        else{
+            seen.add(eventId);
+            uniqueEvents.push(event);
+        }
 
-        seen.add(eventId);
-        uniqueEvents.push(event);
     }
 
     return uniqueEvents;
@@ -147,7 +146,23 @@ function calculateOrderState(orders, refundList,events) {
 
         const totalAmount =
             Math.round(Number(order.total_amount) * 100);
+        let isHighValue = false;
 
+if (
+    order.currency === "INR" &&
+    totalAmount >= 2000000
+) {
+    // ₹20,000 = 2,000,000 paise
+    isHighValue = true;
+}
+
+if (
+    order.currency === "USD" &&
+    totalAmount >= 10000
+) {
+    // $100 = 10,000 cents
+    isHighValue = true;
+}
         let refundedAmount = 0;
         let pendingAmount = 0;
         const issues = [];
@@ -236,6 +251,7 @@ if (overRefundedAmount > 0) {
 
             status,
             hasChargeback,
+            isHighValue,
             issues,
 
             refunds: orderRefunds
